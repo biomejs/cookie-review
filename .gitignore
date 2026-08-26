@@ -69,6 +69,8 @@ web_modules/
 .env
 .env.*
 !.env.example
+.dev.vars
+.dev.vars.*
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -82,6 +84,8 @@ out
 .nuxt
 dist
 .output
+.wrangler/
+.flue-vite.wrangler.jsonc
 
 # Gatsby files
 .cache/

@@ -1,0 +1,52 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "cookie-review",
+	"compatibility_date": "2026-08-26",
+	"compatibility_flags": ["nodejs_compat"],
+	"ai": { "binding": "AI" },
+	"observability": {
+		"enabled": true,
+		"traces": { "enabled": true }
+	},
+	"durable_objects": {
+		"bindings": [
+			{ "class_name": "Sandbox", "name": "Sandbox" },
+			{ "class_name": "ReviewCoordinator", "name": "REVIEW_COORDINATOR" }
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"FlueReviewerAgent",
+				"Sandbox",
+				"ReviewCoordinator"
+			]
+		}
+	],
+	"containers": [
+		{ "class_name": "Sandbox", "image": "./Dockerfile", "max_instances": 10 }
+	],
+	"workflows": [
+		{
+			"binding": "REVIEW_WORKFLOW",
+			"class_name": "ReviewWorkflow",
+			"name": "cookie-review-workflow"
+		}
+	],
+	"queues": {
+		"producers": [
+			{ "binding": "REVIEW_REQUESTS", "queue": "cookie-review-requests" }
+		],
+		"consumers": [
+			{
+				"queue": "cookie-review-requests",
+				"dead_letter_queue": "cookie-review-dead-letters",
+				"max_batch_size": 10,
+				"max_batch_timeout": 1,
+				"max_retries": 5,
+				"retry_delay": 30
+			}
+		]
+	}
+}

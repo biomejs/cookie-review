@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"allowImportingTsExtensions": true,
+		"lib": ["ESNext"],
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"noEmit": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"target": "ES2022",
+		"types": ["node", "@cloudflare/workers-types"],
+		"verbatimModuleSyntax": true
+	},
+	"include": ["src", "test", "vite.config.ts", "vitest.config.ts"]
+}
