@@ -7,7 +7,7 @@
 		"build": "vite build",
 		"check": "biome check .",
 		"check:types": "tsc --noEmit",
-		"deploy": "vite build && wrangler deploy",
+		"deploy": "wrangler deploy",
 		"dev": "vite dev",
 		"test": "vitest run"
 	},
