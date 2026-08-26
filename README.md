@@ -9,7 +9,7 @@ The application uses Flue v2, Cloudflare Workers AI, Workflows, Queues, Durable 
 Requirements:
 
 - Node.js 22.19 or newer
-- pnpm 11
+- pnpm 10.11.1
 - A Cloudflare Workers Paid account with Containers access
 - A fine-grained token for `biome-cookie`
 

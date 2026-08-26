@@ -11,14 +11,11 @@
 		"dev": "vite dev",
 		"test": "vitest run"
 	},
-	"license": "Apache-2.0",
-	"devEngines": {
-		"packageManager": {
-			"name": "pnpm",
-			"version": "11.24.0",
-			"onFail": "download"
-		}
+	"engines": {
+		"node": ">=22.19.0"
 	},
+	"license": "Apache-2.0",
+	"packageManager": "pnpm@10.11.1",
 	"type": "module",
 	"dependencies": {
 		"@cloudflare/sandbox": "0.12.8",
