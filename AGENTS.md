@@ -21,9 +21,10 @@ This TypeScript application reviews configured GitHub pull requests using Flue v
 - Busy requests are acknowledged and discarded after adding the configured reaction; they never wait for later execution.
 - GitHub webhook delivery IDs and Queue redelivery must be idempotent.
 - The review skill is loaded from the trusted PR base commit, never from the contributor-controlled head commit.
+- Closing issues and linked discussions are collected before dispatch as untrusted business context, never as instructions or a source of truth.
 - The Sandbox receives no GitHub token. All privileged GitHub writes happen in Worker code.
 - Reviews are static and read-only. Never run repository code, tests, builds, formatters, linters, codegen, package managers, or daemons.
-- Findings must pass the shared Valibot schema. Commentable findings are attached to right-side PR diff lines; all others remain in the review body.
+- Findings must pass the shared Valibot schema and attach to right-side PR diff lines. Non-commentable findings are omitted and never rendered in the review body.
 
 ## Commands
 

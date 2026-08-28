@@ -10,6 +10,7 @@ export interface PullRequestSnapshot {
 	headSha: string;
 	pullNumber: number;
 	repository: string;
+	requirements: string;
 	title: string;
 }
 
@@ -40,6 +41,10 @@ export async function ensureReviewWorkspace(input: {
 	await input.sandbox.writeFile(
 		"/workspace/review/REVIEW.md",
 		renderReviewMetadata(input.pull),
+	);
+	await input.sandbox.writeFile(
+		"/workspace/review/REQUIREMENTS.md",
+		input.pull.requirements,
 	);
 	await input.sandbox.writeFile(WORKSPACE_MARKER, input.pull.headSha);
 }

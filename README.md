@@ -31,7 +31,7 @@ Configure the `biomejs/biome` repository webhook:
 - Event: Issue comments
 - Secret: the same value stored as `GITHUB_WEBHOOK_SECRET`
 
-The GitHub token needs repository metadata read, pull requests read/write, and issues write permissions. Issues write is required for the busy-request reaction.
+The GitHub token needs repository metadata read, discussions read, pull requests read/write, and issues write permissions. Discussions read is required for linked business context; issues write is required for the busy-request reaction.
 
 ## Development
 
@@ -46,10 +46,12 @@ Cloudflare Sandbox containers are deployed infrastructure and are not exercised 
 
 ## Deploy
 
+The Workers Builds API token needs account-level Workers Scripts Edit and Containers Edit permissions.
+
 ```sh
 pnpm build
 pnpm wrangler deploy --dry-run
-pnpm deploy
+pnpm run deploy
 ```
 
 The Worker exposes `GET /health` and the verified GitHub webhook route. The Flue reviewer is dispatch-only and has no public agent route.

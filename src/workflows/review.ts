@@ -11,6 +11,7 @@ import { Reviewer } from "../agents/reviewer.ts";
 import { config, getRepositoryConfig } from "../config.ts";
 import type { ReviewCoordinator } from "../coordinator.ts";
 import { createGitHubClient } from "../github/client.ts";
+import { readBusinessRequirements } from "../github/context.ts";
 import {
 	ensureReviewWorkspace,
 	type PullRequestSnapshot,
@@ -57,13 +58,21 @@ export class ReviewWorkflow extends WorkflowEntrypoint<
 				if (response.data.state !== "open") {
 					throw new NonRetryableError("Pull request is not open");
 				}
+				const body = response.data.body ?? "";
 				return {
 					baseRef: response.data.base.ref,
 					baseSha: response.data.base.sha,
-					body: response.data.body ?? "",
+					body,
 					headSha: response.data.head.sha,
 					pullNumber: request.pullNumber,
 					repository: request.repository,
+					requirements: await readBusinessRequirements({
+						client,
+						owner,
+						pullBody: body,
+						pullNumber: request.pullNumber,
+						repo,
+					}),
 					title: response.data.title,
 				} satisfies PullRequestSnapshot;
 			});

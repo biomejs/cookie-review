@@ -19,15 +19,14 @@ export function prepareReviewPublication(input: {
 	diffsByPath: ReadonlyMap<string, string>;
 	review: ReviewResult;
 }) {
-	const located = locateFindings(input.review.findings, input.diffsByPath);
+	const inline = locateFindings(input.review.findings, input.diffsByPath);
 	return {
 		body: renderReviewBody({
 			deliveryId: input.deliveryId,
-			inlineCount: located.inline.length,
-			remaining: located.remaining,
+			inlineCount: inline.length,
 			review: input.review,
 		}),
-		comments: located.inline.map((finding) => ({
+		comments: inline.map((finding) => ({
 			body: renderFinding(finding),
 			line: finding.endLine ?? (finding.line as number),
 			path: finding.path,

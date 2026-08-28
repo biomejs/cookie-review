@@ -4,11 +4,6 @@ interface RightSideHunk {
 	lines: Set<number>;
 }
 
-export interface LocatedFindings {
-	inline: Finding[];
-	remaining: Finding[];
-}
-
 export function parseRightSideHunks(diff: string): RightSideHunk[] {
 	const hunks: RightSideHunk[] = [];
 	let current: RightSideHunk | undefined;
@@ -39,13 +34,11 @@ export function parseRightSideHunks(diff: string): RightSideHunk[] {
 export function locateFindings(
 	findings: Finding[],
 	diffsByPath: ReadonlyMap<string, string>,
-): LocatedFindings {
+): Finding[] {
 	const inline: Finding[] = [];
-	const remaining: Finding[] = [];
 
 	for (const finding of findings) {
 		if (finding.line === null || !isSafeRepositoryPath(finding.path)) {
-			remaining.push(finding);
 			continue;
 		}
 
@@ -59,10 +52,9 @@ export function locateFindings(
 			);
 
 		if (isCommentable) inline.push(finding);
-		else remaining.push(finding);
 	}
 
-	return { inline, remaining };
+	return inline;
 }
 
 export function isSafeRepositoryPath(path: string) {
