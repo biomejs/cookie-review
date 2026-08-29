@@ -27,7 +27,7 @@
 		"valibot": "1.4.2"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.10",
+		"@biomejs/biome": "2.5.11",
 		"@cloudflare/vite-plugin": "1.39.2",
 		"@cloudflare/workers-types": "5.20260825.1",
 		"@flue/cli": "2.0.3",
