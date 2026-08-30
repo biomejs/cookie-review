@@ -5,6 +5,7 @@ import type { AdmissionResult, ReviewRequest } from "./review/request.ts";
 interface QueueServices {
 	admit(request: ReviewRequest): Promise<AdmissionResult>;
 	getPermission(request: ReviewRequest): Promise<string | undefined>;
+	reactAcknowledge(request: ReviewRequest): Promise<void>;
 	reactBusy(request: ReviewRequest): Promise<void>;
 }
 
@@ -22,5 +23,6 @@ export async function processReviewRequest(
 		await services.reactBusy(request);
 		return "busy" as const;
 	}
+	await services.reactAcknowledge(request);
 	return "accepted" as const;
 }
