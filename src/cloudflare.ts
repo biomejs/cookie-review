@@ -1,5 +1,5 @@
 import { Sandbox } from "@cloudflare/sandbox";
-import type { Octokit } from "@octokit/rest";
+import type { Octokit, RestEndpointMethodTypes } from "@octokit/rest";
 import * as v from "valibot";
 import { config } from "./config.ts";
 import { ReviewCoordinator } from "./coordinator.ts";
@@ -41,7 +41,9 @@ export default {
 							).admit(request);
 						},
 						getPermission: (request) => getPermission(client, request),
-						reactBusy: (request) => reactBusy(client, request),
+						reactAcknowledge: (request) =>
+							react(client, request, config.acknowledgeReaction),
+						reactBusy: (request) => react(client, request, config.busyReaction),
 					});
 					message.ack();
 				} catch (error) {
@@ -68,11 +70,15 @@ async function getPermission(client: GitHubClient, request: ReviewRequest) {
 	}
 }
 
-async function reactBusy(client: GitHubClient, request: ReviewRequest) {
+async function react(
+	client: GitHubClient,
+	request: ReviewRequest,
+	content: RestEndpointMethodTypes["reactions"]["createForIssueComment"]["parameters"]["content"],
+) {
 	const [owner, repo] = splitRepository(request.repository);
 	await client.rest.reactions.createForIssueComment({
 		comment_id: request.commentId,
-		content: config.busyReaction,
+		content,
 		owner,
 		repo,
 	});

@@ -12,26 +12,32 @@ const request: ReviewRequest = {
 
 describe("Queue review processing", () => {
 	it("starts an admitted maintainer review", async () => {
+		const reactAcknowledge = vi.fn();
 		const reactBusy = vi.fn();
 		const result = await processReviewRequest(request, {
 			admit: async () => ({ outcome: "accepted", workflowId: "delivery-1" }),
 			getPermission: async () => "write",
+			reactAcknowledge,
 			reactBusy,
 		});
 
 		expect(result).toBe("accepted");
+		expect(reactAcknowledge).toHaveBeenCalledOnce();
 		expect(reactBusy).not.toHaveBeenCalled();
 	});
 
 	it("reacts once and discards a busy request", async () => {
+		const reactAcknowledge = vi.fn();
 		const reactBusy = vi.fn();
 		const result = await processReviewRequest(request, {
 			admit: async () => ({ outcome: "busy", workflowId: "delivery-0" }),
 			getPermission: async () => "admin",
+			reactAcknowledge,
 			reactBusy,
 		});
 
 		expect(result).toBe("busy");
+		expect(reactAcknowledge).not.toHaveBeenCalled();
 		expect(reactBusy).toHaveBeenCalledOnce();
 	});
 
@@ -41,6 +47,7 @@ describe("Queue review processing", () => {
 			await processReviewRequest(request, {
 				admit,
 				getPermission: async () => "read",
+				reactAcknowledge: vi.fn(),
 				reactBusy: vi.fn(),
 			}),
 		).toBe("ignored");
@@ -50,6 +57,7 @@ describe("Queue review processing", () => {
 				{
 					admit,
 					getPermission: vi.fn(),
+					reactAcknowledge: vi.fn(),
 					reactBusy: vi.fn(),
 				},
 			),

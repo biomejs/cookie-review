@@ -1,4 +1,5 @@
 export const config = {
+	acknowledgeReaction: "eyes",
 	busyReaction: "-1",
 	reviewStaleAfterMs: 24 * 60 * 60 * 1000,
 	sandboxSleepAfter: "2h",
