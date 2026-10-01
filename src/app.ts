@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import { channel } from "./channels/github.ts";
+import { installFlueFailureLogging } from "./observability.ts";
+
+installFlueFailureLogging();
 
 const app = new Hono();
 
