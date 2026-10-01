@@ -6,7 +6,7 @@ export const config = {
 	trigger: "@biome-cookie review",
 	repositories: {
 		"biomejs/biome": {
-			model: "cloudflare/@cf/zai-org/glm-5.3",
+			model: "cloudflare/@cf/moonshotai/kimi-k2.7-code",
 			skill: ".claude/skills/biome-code-review/SKILL.md",
 			thinkingLevel: "high",
 		},
