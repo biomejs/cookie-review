@@ -5,13 +5,18 @@ import {
 } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
 import { getSandbox, type Sandbox } from "@cloudflare/sandbox";
-import { init } from "@flue/runtime";
+import { AgentRunError, init } from "@flue/runtime";
 import * as v from "valibot";
 import { Reviewer } from "../agents/reviewer.ts";
 import { config, getRepositoryConfig } from "../config.ts";
 import type { ReviewCoordinator } from "../coordinator.ts";
 import { createGitHubClient } from "../github/client.ts";
 import { readBusinessRequirements } from "../github/context.ts";
+import {
+	agentRunFailureMessage,
+	createAgentRunFailureRecord,
+	serializeError,
+} from "../observability.ts";
 import {
 	ensureReviewWorkspace,
 	type PullRequestSnapshot,
@@ -123,8 +128,38 @@ export class ReviewWorkflow extends WorkflowEntrypoint<
 					timeout: "90 minutes",
 				},
 				async () => {
-					const result = await reviewer.read(receipt);
-					return readStructuredReview(result.data);
+					const result = await reviewer
+						.read(receipt)
+						.catch((error: unknown) => {
+							if (!(error instanceof AgentRunError)) throw error;
+							console.error(
+								createAgentRunFailureRecord(error, {
+									pullNumber: request.pullNumber,
+									repository: request.repository,
+									workflowInstanceId: event.instanceId,
+								}),
+							);
+							throw new NonRetryableError(agentRunFailureMessage(error));
+						});
+
+					try {
+						return readStructuredReview(result.data);
+					} catch (error) {
+						console.error({
+							error: serializeError(error),
+							event: "review.result.invalid",
+							pullNumber: request.pullNumber,
+							repository: request.repository,
+							severity: "error",
+							submissionId: receipt.submissionId,
+							workflowInstanceId: event.instanceId,
+						});
+						throw new NonRetryableError(
+							error instanceof Error
+								? error.message
+								: "Reviewer returned an invalid structured result",
+						);
+					}
 				},
 			);
 
