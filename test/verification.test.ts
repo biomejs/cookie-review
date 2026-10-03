@@ -222,6 +222,7 @@ describe("suggestion verification", () => {
 		expect(commands.at(-1)).toContain(
 			"cargo check --locked --offline -p 'biome_service' --features 'stable'",
 		);
+		expect(commands.at(-1)).not.toContain("rm -f");
 		expect(allowedHosts).toEqual([[]]);
 	});
 

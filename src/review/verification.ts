@@ -217,9 +217,11 @@ export async function verifySuggestion(input: {
 		1,
 		Math.floor(input.policy.commandTimeoutMs / 1_000),
 	);
+	// Sandbox 0.x executes one shell string. Every dynamic value below is either
+	// host-generated or shell-quoted, and the redirection truncates this fixed log
+	// path before Cargo starts, so no separate file-removal command is needed.
 	const runCommand = [
 		"set +e",
-		`rm -f ${shellQuote(OUTPUT_PATH)}`,
 		[
 			"timeout --signal=TERM --kill-after=5s",
 			`${timeoutSeconds}s`,
