@@ -22,8 +22,8 @@ import { reviewResultSchema } from "../review/schema.ts";
 import {
 	suggestionVerificationSchema,
 	type VerificationSandboxStub,
-	verifySuggestion,
-	verifySuggestionInputSchema,
+	verifySuggestions,
+	verifySuggestionsInputSchema,
 } from "../review/verification.ts";
 
 export const reviewerInitialDataSchema = v.object({
@@ -110,17 +110,17 @@ export function Reviewer({ id }: AgentProps) {
 		return next;
 	};
 	useTool({
-		name: "verify_suggestion",
+		name: "verify_suggestions",
 		description:
-			"Apply one proposed replacement to a pristine checkout in an isolated, offline sandbox and run one package-scoped Cargo check, test, or Clippy command. The host derives the owning package and adds configured required features such as biome_service/stable. Requested features must be explicit package features; all-features and workspace-wide execution are unavailable. Use only for a localized suggestion after validating the finding statically. A suggestion may be submitted only when this tool returns verified=true.",
-		input: verifySuggestionInputSchema,
+			"Apply a batch of non-overlapping proposed replacements from one Cargo package to a pristine checkout in an isolated, offline sandbox, then run one package-scoped Cargo check, test, or Clippy command. Batch candidates that need the same command so Cargo runs once. The host derives the owning package and adds configured required features such as biome_service/stable. Mixed-package batches, all-features, and workspace-wide execution are unavailable. Suggestions may be submitted only when this tool returns verified=true with a matching verification ID for each replacement.",
+		input: verifySuggestionsInputSchema,
 		async run({ data: request, log, signal, toolCallId }) {
-			log.info("Starting isolated suggestion verification", {
-				path: request.path,
+			log.info("Starting isolated suggestion batch verification", {
+				suggestionCount: request.suggestions.length,
 			});
 			const verification = await getVerificationSandbox();
 			const result = await enqueueVerification(() =>
-				verifySuggestion({
+				verifySuggestions({
 					network: verificationStub,
 					policy: repository.verification,
 					pull: data,
@@ -130,13 +130,20 @@ export function Reviewer({ id }: AgentProps) {
 					signal,
 				}),
 			);
-			if (result.receipt) writeSuggestionVerification(result.receipt);
+			for (const receipt of result.receipts) {
+				writeSuggestionVerification(receipt);
+			}
 			return {
 				output: {
 					command: result.command,
 					exitCode: result.exitCode,
 					output: result.output,
-					verificationId: result.receipt?.id ?? null,
+					verifications: result.receipts.map((receipt) => ({
+						endLine: receipt.endLine,
+						line: receipt.line,
+						path: receipt.path,
+						verificationId: receipt.id,
+					})),
 					verified: result.verified,
 				},
 			};
@@ -177,13 +184,13 @@ export function Reviewer({ id }: AgentProps) {
 		"The host replaces the skill's fenced Markdown report format and extends its finding output with optional verified suggestions: call submit_review with the equivalent structured result instead.",
 		"Submit a finding only when it can be attached to a right-side line visible in PR.diff. The line is one-based in the head commit; never use null. Use endLine only for a contiguous range.",
 		"For each finding, set suggestion to null unless a complete, local, unambiguous replacement can safely fix it. Finding prose must still explain the defect and minimal remediation.",
-		"To attach a suggestion, call verify_suggestion with the exact same path, line, endLine, and raw replacement text. The selected line range must be exactly what the replacement replaces. Preserve indentation, use an empty replacement to delete the selected range, and do not include Markdown fences or a trailing newline.",
-		"Choose one focused verification: a filtered package test when available, otherwise a package check; use Clippy only when lint validation is relevant. The host derives the package from the path, adds configured required features such as biome_service/stable, and rejects all-features or workspace-wide execution.",
-		"Only submit a non-null suggestion after verify_suggestion returns verified=true. Copy its verificationId exactly. If verification fails, times out, lacks an owning Cargo package, or cannot run, keep the finding but set suggestion to null. Never treat verification infrastructure failures as findings.",
-		"The verification tool is the only exception to the skill's static-only and no-patch rules. It runs one host-constrained package check in a separate tokenless sandbox. Do not attempt any other execution or mutation.",
+		"Collect candidate suggestions before verification. Batch non-overlapping suggestions from the same Cargo package that need the same command into one verify_suggestions call. The selected line ranges must be exactly what each replacement replaces. Preserve indentation, use an empty replacement to delete a selected range, and do not include Markdown fences or trailing newlines.",
+		"Choose one focused command per batch: a filtered package test when it validates every suggestion in the batch, otherwise a package check; use Clippy only when lint validation is relevant. The host derives the package from each path, adds configured required features such as biome_service/stable, and rejects mixed-package batches, all-features, or workspace-wide execution.",
+		"Only submit non-null suggestions after verify_suggestions returns verified=true. Copy the verificationId matching each path and line range exactly. A failed batch issues no receipts; split only that batch into smaller groups if useful, otherwise keep its findings with suggestion set to null. Never treat verification infrastructure failures as findings.",
+		"The verification tool is the only exception to the skill's static-only and no-patch rules. It runs one host-constrained package check per batch in a separate tokenless sandbox. Do not attempt any other execution or mutation.",
 		"Do not repeat, summarize, or relocate finding details in summary, questions, or status. Keep those fields limited to non-finding review context.",
 		"Omit concerns that cannot be anchored to a commentable changed line rather than reporting them elsewhere.",
-		"Outside verify_suggestion, do not run project code, tests, builds, formatters, linters, codegen, package managers, LSPs, benchmarks, or daemons.",
+		"Outside verify_suggestions, do not run project code, tests, builds, formatters, linters, codegen, package managers, LSPs, benchmarks, or daemons.",
 	].join("\n\n");
 }
 

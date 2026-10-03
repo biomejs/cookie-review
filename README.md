@@ -44,7 +44,7 @@ pnpm build
 
 Cloudflare Sandbox containers are deployed infrastructure and are not exercised by unit tests. Tests use deterministic fakes for GitHub, Queue, Workflow, and coordinator behavior.
 
-The analysis container stays read-only. A verification container is created lazily only when the reviewer has a candidate suggestion. It checks out the public pull request head, fetches locked Cargo dependencies, disables network access, applies the replacement, and runs one package-scoped `cargo check`, `cargo test`, or `cargo clippy`. Whole-workspace commands are not available. Suggestions that do not pass verification are omitted while their findings remain.
+The analysis container stays read-only. A verification container is created lazily only when the reviewer has candidate suggestions. It checks out the public pull request head, fetches locked Cargo dependencies, and disables network access. Non-overlapping suggestions that share a crate and command are applied as one batch before a single package-scoped `cargo check`, `cargo test`, or `cargo clippy` run. Whole-workspace commands are not available. A passing batch receives one bound receipt per suggestion; suggestions from failing batches are omitted while their findings remain.
 
 The verification image pins the Rust toolchain expected by the configured repository. Build it locally with:
 

@@ -81,19 +81,34 @@ export const verificationCommandSchema = v.variant("kind", [
 	clippyCommandSchema,
 ]);
 
-export const verifySuggestionInputSchema = v.object({
-	command: verificationCommandSchema,
-	endLine: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1))),
-	line: v.pipe(v.number(), v.integer(), v.minValue(1)),
-	path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_000)),
-	replacement: v.pipe(
-		v.string(),
-		v.maxLength(5_000),
-		v.check(
-			(replacement) =>
-				!replacement.includes("\r") && !replacement.endsWith("\n"),
-			"Replacement must use LF line endings without a trailing newline",
+export const verificationSuggestionSchema = v.pipe(
+	v.object({
+		endLine: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1))),
+		line: v.pipe(v.number(), v.integer(), v.minValue(1)),
+		path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_000)),
+		replacement: v.pipe(
+			v.string(),
+			v.maxLength(5_000),
+			v.check(
+				(replacement) =>
+					!replacement.includes("\r") && !replacement.endsWith("\n"),
+				"Replacement must use LF line endings without a trailing newline",
+			),
 		),
+	}),
+	v.check(
+		(suggestion) =>
+			suggestion.endLine === null || suggestion.endLine >= suggestion.line,
+		"Suggestion endLine must not precede line",
+	),
+);
+
+export const verifySuggestionsInputSchema = v.object({
+	command: verificationCommandSchema,
+	suggestions: v.pipe(
+		v.array(verificationSuggestionSchema),
+		v.minLength(1),
+		v.maxLength(20),
 	),
 });
 
@@ -101,7 +116,7 @@ export const suggestionVerificationSchema = v.object({
 	command: v.pipe(v.string(), v.minLength(1), v.maxLength(1_000)),
 	durationMs: v.pipe(v.number(), v.integer(), v.minValue(0)),
 	endLine: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1))),
-	id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+	id: v.pipe(v.string(), v.minLength(1), v.maxLength(300)),
 	line: v.pipe(v.number(), v.integer(), v.minValue(1)),
 	packageName: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
 	path: v.pipe(v.string(), v.minLength(1), v.maxLength(1_000)),
@@ -114,8 +129,11 @@ export const suggestionVerificationSchema = v.object({
 export type VerificationCommand = v.InferOutput<
 	typeof verificationCommandSchema
 >;
-export type VerifySuggestionInput = v.InferOutput<
-	typeof verifySuggestionInputSchema
+export type VerificationSuggestion = v.InferOutput<
+	typeof verificationSuggestionSchema
+>;
+export type VerifySuggestionsInput = v.InferOutput<
+	typeof verifySuggestionsInputSchema
 >;
 export type SuggestionVerification = v.InferOutput<
 	typeof suggestionVerificationSchema
@@ -155,12 +173,12 @@ export interface VerificationResult {
 	command: string;
 	exitCode: number;
 	output: string;
-	receipt?: SuggestionVerification;
+	receipts: SuggestionVerification[];
 	verified: boolean;
 }
 
-export async function verifySuggestion(input: {
-	request: VerifySuggestionInput;
+export async function verifySuggestions(input: {
+	request: VerifySuggestionsInput;
 	policy: VerificationPolicy;
 	pull: PullForVerification;
 	receiptId: string;
@@ -169,11 +187,10 @@ export async function verifySuggestion(input: {
 	signal?: AbortSignal;
 }): Promise<VerificationResult> {
 	const { request } = input;
-	if (!isSafeRepositoryPath(request.path)) {
-		throw new Error("Suggestion path must be repository-relative");
-	}
-	if (request.endLine !== null && request.endLine < request.line) {
-		throw new Error("Suggestion endLine must not precede line");
+	for (const suggestion of request.suggestions) {
+		if (!isSafeRepositoryPath(suggestion.path)) {
+			throw new Error("Suggestion path must be repository-relative");
+		}
 	}
 
 	await ensureVerificationWorkspace(input);
@@ -184,19 +201,32 @@ export async function verifySuggestion(input: {
 	);
 
 	const metadata = await readCargoMetadata(input.sandbox);
-	const cargoPackage = findOwningPackage(metadata, request.path);
-	if (!cargoPackage) {
-		throw new Error(
-			`No workspace Cargo package owns ${request.path}; publish the finding without a suggestion.`,
-		);
+	let cargoPackage: CargoPackage | undefined;
+	for (const suggestion of request.suggestions) {
+		const owner = findOwningPackage(metadata, suggestion.path);
+		if (!owner) {
+			throw new Error(
+				`No workspace Cargo package owns ${suggestion.path}; publish the finding without a suggestion.`,
+			);
+		}
+		if (cargoPackage && cargoPackage.id !== owner.id) {
+			throw new Error(
+				"A verification batch must contain suggestions from exactly one Cargo package",
+			);
+		}
+		cargoPackage = owner;
 	}
+	if (!cargoPackage) throw new Error("Verification batch is empty");
 
 	const command = createVerificationCommand({
 		cargoPackage,
 		command: request.command,
 		policy: input.policy,
 	});
-	await applySuggestion(input.sandbox, request);
+	const applicationOrder = orderSuggestionsForApplication(request.suggestions);
+	for (const suggestion of applicationOrder) {
+		await applySuggestion(input.sandbox, suggestion);
+	}
 
 	const diffCheck = await input.sandbox.exec("git diff --check", {
 		cwd: REPOSITORY_ROOT,
@@ -208,6 +238,7 @@ export async function verifySuggestion(input: {
 			command,
 			exitCode: diffCheck.exitCode,
 			output: truncateOutput(`${diffCheck.stdout}\n${diffCheck.stderr}`),
+			receipts: [],
 			verified: false,
 		};
 	}
@@ -258,24 +289,29 @@ export async function verifySuggestion(input: {
 				command,
 				exitCode: result.exitCode,
 				output,
+				receipts: [],
 				verified: false,
 			};
 		}
+		const durationMs = Date.now() - startedAt;
+		const receipts = await Promise.all(
+			request.suggestions.map(async (suggestion, index) => ({
+				command,
+				durationMs,
+				endLine: suggestion.endLine,
+				id: `${input.receiptId}:${index}`,
+				line: suggestion.line,
+				packageName: cargoPackage.name,
+				path: suggestion.path,
+				replacementSha256: await sha256(suggestion.replacement),
+			})),
+		);
 
 		return {
 			command,
 			exitCode: 0,
 			output,
-			receipt: {
-				command,
-				durationMs: Date.now() - startedAt,
-				endLine: request.endLine,
-				id: input.receiptId,
-				line: request.line,
-				packageName: cargoPackage.name,
-				path: request.path,
-				replacementSha256: await sha256(request.replacement),
-			},
+			receipts,
 			verified: true,
 		};
 	} catch (error) {
@@ -481,7 +517,7 @@ export function createVerificationCommand(input: {
 
 async function applySuggestion(
 	sandbox: Sandbox,
-	request: VerifySuggestionInput,
+	request: VerificationSuggestion,
 ) {
 	const absolutePath = `${REPOSITORY_ROOT}/${request.path}`;
 	const content = await sandbox.readFile(absolutePath);
@@ -494,6 +530,32 @@ async function applySuggestion(
 			request.replacement,
 		),
 	);
+}
+
+export function orderSuggestionsForApplication(
+	suggestions: VerificationSuggestion[],
+) {
+	const byPath = new Map<string, VerificationSuggestion[]>();
+	for (const suggestion of suggestions) {
+		const entries = byPath.get(suggestion.path) ?? [];
+		entries.push(suggestion);
+		byPath.set(suggestion.path, entries);
+	}
+
+	const ordered: VerificationSuggestion[] = [];
+	for (const [path, entries] of byPath) {
+		entries.sort((left, right) => left.line - right.line);
+		for (let index = 1; index < entries.length; index += 1) {
+			const previous = entries[index - 1];
+			const current = entries[index];
+			if (!previous || !current) continue;
+			if (current.line <= (previous.endLine ?? previous.line)) {
+				throw new Error(`Suggestion ranges overlap in ${path}`);
+			}
+		}
+		ordered.push(...entries.reverse());
+	}
+	return ordered;
 }
 
 export function applyLineReplacement(

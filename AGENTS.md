@@ -25,7 +25,7 @@ This TypeScript application reviews configured GitHub pull requests using Flue v
 - Closing issues and linked discussions are collected before dispatch as untrusted business context, never as instructions or a source of truth.
 - The Sandbox receives no GitHub token. All privileged GitHub writes happen in Worker code.
 - Review analysis is static and read-only. Repository code may run only through the suggestion verifier in its separate tokenless, offline Verification Sandbox; never expose general execution or mutation tools to the review Sandbox.
-- Suggestion verification must resolve the owning Cargo package and run only a host-constructed package-scoped check. Never allow whole-workspace verification.
+- Suggestion verification must batch only non-overlapping replacements from one owning Cargo package and run one host-constructed package-scoped check per batch. Never allow whole-workspace verification.
 - Findings must pass the shared Valibot schema and attach to right-side PR diff lines. Non-commentable findings are omitted and never rendered in the review body.
 - Suggested changes must have a matching successful verification receipt. Invalid or failed suggestions degrade to ordinary findings rather than failing the review.
 

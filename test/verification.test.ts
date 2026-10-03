@@ -10,9 +10,10 @@ import {
 	createVerificationCheckoutCommand,
 	createVerificationCommand,
 	findOwningPackage,
+	orderSuggestionsForApplication,
 	sha256,
-	verifySuggestion,
-	verifySuggestionInputSchema,
+	verifySuggestions,
+	verifySuggestionsInputSchema,
 } from "../src/review/verification.ts";
 
 const repositoryRoot = "/workspace/verification/repository";
@@ -124,17 +125,21 @@ describe("suggestion verification", () => {
 	});
 
 	it("rejects a test filter that could be parsed as a Cargo option", () => {
-		const result = v.safeParse(verifySuggestionInputSchema, {
+		const result = v.safeParse(verifySuggestionsInputSchema, {
 			command: {
 				features: [],
 				filter: "--workspace",
 				kind: "test",
 				target: null,
 			},
-			endLine: null,
-			line: 1,
-			path: "crates/biome_service/src/lib.rs",
-			replacement: "fixed",
+			suggestions: [
+				{
+					endLine: null,
+					line: 1,
+					path: "crates/biome_service/src/lib.rs",
+					replacement: "fixed",
+				},
+			],
 		});
 		expect(result.success).toBe(false);
 	});
@@ -144,6 +149,26 @@ describe("suggestion verification", () => {
 			"first\nsecond\n",
 		);
 		expect(applyLineReplacement("only\n", 1, null, "")).toBe("");
+	});
+
+	it("orders same-file suggestions bottom-up and rejects overlaps", () => {
+		const first = {
+			endLine: null,
+			line: 2,
+			path: "crates/biome_service/src/lib.rs",
+			replacement: "second",
+		};
+		const second = { ...first, line: 8, replacement: "eighth" };
+		expect(orderSuggestionsForApplication([first, second])).toEqual([
+			second,
+			first,
+		]);
+		expect(() =>
+			orderSuggestionsForApplication([
+				{ ...first, endLine: 4 },
+				{ ...second, line: 4 },
+			]),
+		).toThrow("Suggestion ranges overlap");
 	});
 
 	it("prepares only the requested public head and locked dependencies", () => {
@@ -162,11 +187,14 @@ describe("suggestion verification", () => {
 		expect(command).not.toContain("GITHUB_TOKEN");
 	});
 
-	it("applies and verifies a suggestion in the isolated checkout", async () => {
+	it("applies and verifies a suggestion batch with one Cargo command", async () => {
 		const files = new Map<string, string>([
 			["/workspace/verification/.prepared", "b".repeat(40)],
 			["/workspace/verification/cargo-metadata.json", JSON.stringify(metadata)],
-			[`${repositoryRoot}/crates/biome_service/src/lib.rs`, "fn old() {}\n"],
+			[
+				`${repositoryRoot}/crates/biome_service/src/lib.rs`,
+				"fn old() {}\nfn second() {}\n",
+			],
 		]);
 		const commands: string[] = [];
 		const sandbox = {
@@ -187,7 +215,7 @@ describe("suggestion verification", () => {
 			},
 		} as unknown as Sandbox;
 		const allowedHosts: string[][] = [];
-		const result = await verifySuggestion({
+		const result = await verifySuggestions({
 			network: {
 				async destroy() {},
 				async setAllowedHosts(hosts) {
@@ -203,27 +231,74 @@ describe("suggestion verification", () => {
 			receiptId: "tool-1",
 			request: {
 				command: { features: [], kind: "check" },
-				endLine: null,
-				line: 1,
-				path: "crates/biome_service/src/lib.rs",
-				replacement: "fn fixed() {}",
+				suggestions: [
+					{
+						endLine: null,
+						line: 1,
+						path: "crates/biome_service/src/lib.rs",
+						replacement: "fn fixed() {}\nfn helper() {}",
+					},
+					{
+						endLine: null,
+						line: 2,
+						path: "crates/biome_service/src/lib.rs",
+						replacement: "fn updated() {}",
+					},
+				],
 			},
 			sandbox,
 		});
 
 		expect(result.verified).toBe(true);
-		expect(result.receipt).toMatchObject({
-			id: "tool-1",
-			packageName: "biome_service",
-		});
+		expect(result.receipts).toMatchObject([
+			{ id: "tool-1:0", packageName: "biome_service" },
+			{ id: "tool-1:1", packageName: "biome_service" },
+		]);
 		expect(files.get(`${repositoryRoot}/crates/biome_service/src/lib.rs`)).toBe(
-			"fn fixed() {}\n",
+			"fn fixed() {}\nfn helper() {}\nfn updated() {}\n",
 		);
 		expect(commands.at(-1)).toContain(
 			"cargo check --locked --offline -p 'biome_service' --features 'stable'",
 		);
+		expect(
+			commands.filter((command) => command.includes("cargo check")),
+		).toHaveLength(1);
 		expect(commands.at(-1)).not.toContain("rm -f");
 		expect(allowedHosts).toEqual([[]]);
+
+		await expect(
+			verifySuggestions({
+				network: {
+					async destroy() {},
+					async setAllowedHosts() {},
+				},
+				policy,
+				pull: {
+					headSha: "b".repeat(40),
+					pullNumber: 123,
+					repository: "biomejs/biome",
+				},
+				receiptId: "tool-2",
+				request: {
+					command: { features: [], kind: "check" },
+					suggestions: [
+						{
+							endLine: null,
+							line: 1,
+							path: "crates/biome_service/src/lib.rs",
+							replacement: "service",
+						},
+						{
+							endLine: null,
+							line: 1,
+							path: "crates/biome_parser/src/lib.rs",
+							replacement: "parser",
+						},
+					],
+				},
+				sandbox,
+			}),
+		).rejects.toThrow("exactly one Cargo package");
 	});
 
 	it("keeps only suggestions backed by an exact successful receipt", async () => {

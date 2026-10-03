@@ -48,7 +48,7 @@ const suggestionReplacementSchema = v.pipe(
 
 export const suggestionSchema = v.object({
 	replacement: suggestionReplacementSchema,
-	verificationId: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+	verificationId: v.pipe(v.string(), v.minLength(1), v.maxLength(300)),
 });
 
 export const findingSchema = v.pipe(
