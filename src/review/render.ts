@@ -1,13 +1,30 @@
 import type { Finding, ReviewResult } from "./schema.ts";
 
 export function renderFinding(finding: Finding) {
-	return `**${finding.severity}/${finding.area}: ${finding.title}**\n\n${finding.body}`;
+	const sections = [
+		`**${finding.severity}/${finding.area}: ${finding.title}**`,
+		finding.body,
+	];
+	if (finding.suggestion !== null) {
+		sections.push(renderSuggestion(finding.suggestion.replacement));
+	}
+	return sections.join("\n\n");
+}
+
+export function renderSuggestion(replacement: string) {
+	const longestRun = Math.max(
+		0,
+		...[...replacement.matchAll(/`+/g)].map((match) => match[0].length),
+	);
+	const fence = "`".repeat(Math.max(3, longestRun + 1));
+	return `${fence}suggestion\n${replacement}${replacement.length === 0 ? "" : "\n"}${fence}`;
 }
 
 export function renderReviewBody(input: {
 	deliveryId: string;
 	inlineCount: number;
 	review: ReviewResult;
+	suggestionCount: number;
 }) {
 	const sections = [
 		`<!-- cookie-review:${input.deliveryId} -->`,
@@ -30,7 +47,9 @@ export function renderReviewBody(input: {
 		`- Branch target: ${input.review.status.branchTarget}`,
 		`- Changeset: ${input.review.status.changeset}`,
 		`- Brief: ${input.review.status.brief}`,
-		"- Validation: Static review only; no project code was run.",
+		input.suggestionCount === 0
+			? "- Validation: No verified suggested changes were published; findings may be based on static review."
+			: `- Validation: Static review plus isolated, package-scoped verification for ${input.suggestionCount} suggested change${input.suggestionCount === 1 ? "" : "s"}; no whole-workspace command was run.`,
 		`- Fetch: ${input.review.status.fetch}`,
 	);
 

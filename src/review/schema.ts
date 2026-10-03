@@ -33,6 +33,24 @@ const pathSchema = v.pipe(
 	),
 );
 
+const suggestionReplacementSchema = v.pipe(
+	v.string(),
+	v.maxLength(5_000),
+	v.check(
+		(replacement) => !replacement.includes("\r"),
+		"Suggestion replacement must use LF line endings",
+	),
+	v.check(
+		(replacement) => !replacement.endsWith("\n"),
+		"Suggestion replacement must not end with a newline",
+	),
+);
+
+export const suggestionSchema = v.object({
+	replacement: suggestionReplacementSchema,
+	verificationId: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+});
+
 export const findingSchema = v.pipe(
 	v.object({
 		area: areaSchema,
@@ -41,6 +59,7 @@ export const findingSchema = v.pipe(
 		line: v.nullable(lineSchema),
 		path: pathSchema,
 		severity: severitySchema,
+		suggestion: v.optional(v.nullable(suggestionSchema), null),
 		title: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
 	}),
 	v.check(
@@ -53,6 +72,10 @@ export const findingSchema = v.pipe(
 			finding.line === null ||
 			finding.endLine >= finding.line,
 		"endLine must not precede line",
+	),
+	v.check(
+		(finding) => finding.suggestion === null || finding.line !== null,
+		"suggestion requires line",
 	),
 );
 

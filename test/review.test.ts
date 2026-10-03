@@ -14,6 +14,7 @@ import {
 	prepareReviewPublication,
 	readStructuredReview,
 } from "../src/review/publish.ts";
+import { renderSuggestion } from "../src/review/render.ts";
 import { guardSandbox, readOnlySandbox } from "../src/review/sandbox.ts";
 import { type ReviewResult, reviewResultSchema } from "../src/review/schema.ts";
 
@@ -26,6 +27,7 @@ const review: ReviewResult = {
 			line: 11,
 			path: "src/example.ts",
 			severity: "high",
+			suggestion: null,
 			title: "Empty input is mishandled",
 		},
 		{
@@ -35,6 +37,7 @@ const review: ReviewResult = {
 			line: 90,
 			path: "src/example.ts",
 			severity: "medium",
+			suggestion: null,
 			title: "Missing regression test",
 		},
 	],
@@ -97,11 +100,47 @@ describe("structured review", () => {
 		expect(hunks.map((hunk) => [...hunk.lines])).toEqual([[1], [10, 11]]);
 	});
 
-	it("reads and validates the final Flue data write", () => {
-		expect(readStructuredReview({ review: [{ bad: true }, review] })).toEqual(
-			review,
+	it("renders applicable and deletion suggestions with safe fences", () => {
+		expect(renderSuggestion("return value;")).toBe(
+			"```suggestion\nreturn value;\n```",
 		);
-		expect(() => readStructuredReview({})).toThrow(
+		expect(renderSuggestion("")).toBe("```suggestion\n```");
+		expect(renderSuggestion("```rust\nvalue\n```")).toBe(
+			"````suggestion\n```rust\nvalue\n```\n````",
+		);
+	});
+
+	it("adds a verified suggestion block to an inline finding", () => {
+		const publication = prepareReviewPublication({
+			deliveryId: "delivery-suggestion",
+			diffsByPath: new Map([["src/example.ts", "@@ -11 +11 @@\n-old\n+new"]]),
+			review: {
+				...review,
+				findings: [
+					{
+						...review.findings[0],
+						suggestion: {
+							replacement: "fixed",
+							verificationId: "verified-1",
+						},
+					},
+				],
+			},
+		});
+
+		expect(publication.comments[0]?.body).toContain(
+			"```suggestion\nfixed\n```",
+		);
+		expect(publication.body).toContain(
+			"package-scoped verification for 1 suggested change",
+		);
+	});
+
+	it("reads and validates the final Flue data write", async () => {
+		await expect(
+			readStructuredReview({ review: [{ bad: true }, review] }),
+		).resolves.toEqual(review);
+		await expect(readStructuredReview({})).rejects.toThrow(
 			"Reviewer did not emit structured review data",
 		);
 	});
@@ -173,6 +212,30 @@ describe("structured review", () => {
 			findings: [{ ...review.findings[0], path: "../secret" }],
 		});
 		expect(result.success).toBe(false);
+	});
+
+	it("rejects suggestions without an inline range or with trailing newlines", () => {
+		const suggestion = {
+			replacement: "fixed",
+			verificationId: "verified-1",
+		};
+		expect(
+			v.safeParse(reviewResultSchema, {
+				...review,
+				findings: [{ ...review.findings[0], line: null, suggestion }],
+			}).success,
+		).toBe(false);
+		expect(
+			v.safeParse(reviewResultSchema, {
+				...review,
+				findings: [
+					{
+						...review.findings[0],
+						suggestion: { ...suggestion, replacement: "fixed\n" },
+					},
+				],
+			}).success,
+		).toBe(false);
 	});
 
 	it("prepares a trusted workspace from the base commit", () => {
