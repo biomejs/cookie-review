@@ -1,0 +1,21 @@
+FROM docker.io/library/rust:1.98.1-slim-bookworm AS rust-toolchain
+
+RUN rustup component add clippy rustfmt \
+	&& rustup target add wasm32-unknown-unknown
+
+FROM docker.io/cloudflare/sandbox:0.12.8
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+	CARGO_HOME=/usr/local/cargo \
+	PATH=/usr/local/cargo/bin:${PATH}
+
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends build-essential pkg-config \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& rustc --version \
+	&& cargo --version \
+	&& cargo clippy --version \
+	&& rustup target list --installed | grep -Fx wasm32-unknown-unknown

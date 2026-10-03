@@ -9,8 +9,16 @@ export const config = {
 			model: "cloudflare/@cf/moonshotai/kimi-k2.7-code",
 			skill: ".claude/skills/biome-code-review/SKILL.md",
 			thinkingLevel: "high",
+			verification: {
+				commandTimeoutMs: 15 * 60 * 1000,
+				requiredFeatures: {
+					biome_service: ["stable"],
+				},
+				rustToolchain: "1.98.1",
+			},
 		},
 	},
+	verificationSandboxSleepAfter: "30m",
 } as const;
 
 export type RepositoryName = keyof typeof config.repositories;

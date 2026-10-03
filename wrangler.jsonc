@@ -11,6 +11,10 @@
 	"durable_objects": {
 		"bindings": [
 			{ "class_name": "Sandbox", "name": "Sandbox" },
+			{
+				"class_name": "VerificationSandbox",
+				"name": "VERIFICATION_SANDBOX"
+			},
 			{ "class_name": "ReviewCoordinator", "name": "REVIEW_COORDINATOR" }
 		]
 	},
@@ -22,10 +26,20 @@
 				"Sandbox",
 				"ReviewCoordinator"
 			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["VerificationSandbox"]
 		}
 	],
 	"containers": [
-		{ "class_name": "Sandbox", "image": "./Dockerfile", "max_instances": 10 }
+		{ "class_name": "Sandbox", "image": "./Dockerfile", "max_instances": 10 },
+		{
+			"class_name": "VerificationSandbox",
+			"image": "./Dockerfile.verification",
+			"instance_type": "standard-4",
+			"max_instances": 10
+		}
 	],
 	"workflows": [
 		{

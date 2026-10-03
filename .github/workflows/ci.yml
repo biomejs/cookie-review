@@ -47,3 +47,21 @@ jobs:
 
       - name: Run tsc
         run: pnpm tsc
+
+      - name: Run tests
+        run: pnpm test
+
+  verification-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Build verification image
+        run: docker build --file Dockerfile.verification --tag cookie-review-verification .
+
+      - name: Check Rust verification tools
+        run: >-
+          docker run --rm --entrypoint sh cookie-review-verification -c
+          'rustc --version && cargo --version && cargo clippy --version && rustup target list --installed | grep -Fx wasm32-unknown-unknown'

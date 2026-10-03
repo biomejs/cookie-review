@@ -1,4 +1,7 @@
-import { Sandbox } from "@cloudflare/sandbox";
+import {
+	Sandbox as CloudflareSandbox,
+	ContainerProxy,
+} from "@cloudflare/sandbox";
 import type { Octokit, RestEndpointMethodTypes } from "@octokit/rest";
 import * as v from "valibot";
 import { config } from "./config.ts";
@@ -6,13 +9,25 @@ import { ReviewCoordinator } from "./coordinator.ts";
 import { createGitHubClient, getErrorStatus } from "./github/client.ts";
 import { processReviewRequest } from "./queue.ts";
 import { type ReviewRequest, reviewRequestSchema } from "./review/request.ts";
+import { VERIFICATION_SETUP_HOSTS } from "./review/verification.ts";
 import {
 	coordinatorName,
 	ReviewWorkflow,
 	splitRepository,
 } from "./workflows/review.ts";
 
-export { ReviewCoordinator, ReviewWorkflow, Sandbox };
+export class VerificationSandbox extends CloudflareSandbox {
+	enableInternet = false;
+	interceptHttps = true;
+	allowedHosts = [...VERIFICATION_SETUP_HOSTS];
+}
+
+export {
+	CloudflareSandbox as Sandbox,
+	ContainerProxy,
+	ReviewCoordinator,
+	ReviewWorkflow,
+};
 
 interface WorkerEnv {
 	GITHUB_TOKEN: string;

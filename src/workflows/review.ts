@@ -35,6 +35,7 @@ interface ReviewWorkflowEnv {
 	GITHUB_TOKEN: string;
 	REVIEW_COORDINATOR: DurableObjectNamespace<ReviewCoordinator>;
 	Sandbox: DurableObjectNamespace<Sandbox>;
+	VERIFICATION_SANDBOX: DurableObjectNamespace<Sandbox>;
 }
 
 export class ReviewWorkflow extends WorkflowEntrypoint<
@@ -143,7 +144,7 @@ export class ReviewWorkflow extends WorkflowEntrypoint<
 						});
 
 					try {
-						return readStructuredReview(result.data);
+						return await readStructuredReview(result.data);
 					} catch (error) {
 						console.error({
 							error: serializeError(error),
@@ -224,9 +225,31 @@ export class ReviewWorkflow extends WorkflowEntrypoint<
 					},
 				);
 			} finally {
-				await step.do("release review admission", () =>
-					coordinator.complete(event.instanceId),
-				);
+				try {
+					await step.do(
+						"destroy verification sandbox",
+						{
+							retries: {
+								backoff: "exponential",
+								delay: "10 seconds",
+								limit: 3,
+							},
+							timeout: "2 minutes",
+						},
+						async () => {
+							const sandbox = getSandbox(
+								this.env.VERIFICATION_SANDBOX,
+								`${event.instanceId}-verification`,
+								{ sleepAfter: config.verificationSandboxSleepAfter },
+							);
+							await sandbox.destroy();
+						},
+					);
+				} finally {
+					await step.do("release review admission", () =>
+						coordinator.complete(event.instanceId),
+					);
+				}
 			}
 		}
 	}

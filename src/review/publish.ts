@@ -3,15 +3,45 @@ import * as v from "valibot";
 import { locateFindings } from "./diff.ts";
 import { renderFinding, renderReviewBody } from "./render.ts";
 import { type ReviewResult, reviewResultSchema } from "./schema.ts";
+import {
+	type SuggestionVerification,
+	sha256,
+	suggestionVerificationSchema,
+} from "./verification.ts";
 
 type GitHubClient = InstanceType<typeof Octokit>;
 
-export function readStructuredReview(data: Record<string, unknown[]>) {
+export async function readStructuredReview(data: Record<string, unknown[]>) {
 	const writes = data.review;
 	if (!writes || writes.length === 0) {
 		throw new Error("Reviewer did not emit structured review data");
 	}
-	return v.parse(reviewResultSchema, writes.at(-1));
+	const review = v.parse(reviewResultSchema, writes.at(-1));
+	const verifications = new Map<string, SuggestionVerification>();
+	for (const value of data.suggestionVerification ?? []) {
+		const parsed = v.safeParse(suggestionVerificationSchema, value);
+		if (parsed.success) verifications.set(parsed.output.id, parsed.output);
+	}
+
+	return {
+		...review,
+		findings: await Promise.all(
+			review.findings.map(async (finding) => {
+				if (finding.suggestion === null) return finding;
+				const verification = verifications.get(
+					finding.suggestion.verificationId,
+				);
+				const matches =
+					verification !== undefined &&
+					verification.path === finding.path &&
+					verification.line === finding.line &&
+					verification.endLine === finding.endLine &&
+					verification.replacementSha256 ===
+						(await sha256(finding.suggestion.replacement));
+				return matches ? finding : { ...finding, suggestion: null };
+			}),
+		),
+	};
 }
 
 export function prepareReviewPublication(input: {
@@ -20,11 +50,15 @@ export function prepareReviewPublication(input: {
 	review: ReviewResult;
 }) {
 	const inline = locateFindings(input.review.findings, input.diffsByPath);
+	const suggestionCount = inline.filter(
+		(finding) => finding.suggestion !== null,
+	).length;
 	return {
 		body: renderReviewBody({
 			deliveryId: input.deliveryId,
 			inlineCount: inline.length,
 			review: input.review,
+			suggestionCount,
 		}),
 		comments: inline.map((finding) => ({
 			body: renderFinding(finding),
