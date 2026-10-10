@@ -1,17 +1,18 @@
 # Cookie Review
 
-This TypeScript application reviews configured GitHub pull requests using Flue v2 on Cloudflare Workers.
+This TypeScript application reviews configured GitHub pull requests using Flue v2 on Cloudflare Workers. It also labels newly opened bug reports that lack a reproduction link.
 
 ## Architecture
 
 - `src/config.ts` contains public repository policy. Secrets never belong there.
 - `src/app.ts` owns HTTP routing, including the verified Flue GitHub channel.
 - `src/cloudflare.ts` exports the Workflow, Durable Objects, Sandbox, and Queue consumer.
-- `src/channels/` validates GitHub webhook events and sends review requests to Cloudflare Queues.
+- `src/channels/` validates GitHub webhook events and sends review and issue triage requests to Cloudflare Queues.
 - `src/coordinator.ts` serializes admission per repository and pull request.
 - `src/workflows/` orchestrates checkout, Flue dispatch/read, review publication, and lock release.
 - `src/agents/` contains Flue agents. Every agent module begins with `'use agent'`.
 - `src/review/` contains structured result schemas, diff mapping, and GitHub rendering.
+- `src/triage/` decides whether a new issue needs a reproduction: deterministic heuristics first, then the Jev decision model for what they leave undecided.
 - `src/review/verification.ts` owns isolated suggested-change verification and its package-scoped Cargo policy.
 
 ## Invariants
@@ -21,6 +22,9 @@ This TypeScript application reviews configured GitHub pull requests using Flue v
 - At most one review Workflow may be active for a pull request.
 - Busy requests are acknowledged and discarded after adding the configured reaction; they never wait for later execution.
 - GitHub webhook delivery IDs and Queue redelivery must be idempotent.
+- Issue triage runs only for newly opened issues in configured repositories whose author is not a member or owner of the organization. The author association is checked at ingress and again at Queue consumption time.
+- Issue triage only ever adds the configured needs-reproduction label, and only to an open bug report with no playground or reproduction repository link. It never removes labels, comments, or closes issues.
+- Issue content is untrusted. It reaches Jev only as the state scored against fixed host-authored questions; an uncertain or invalid answer never applies the label.
 - The review skill is loaded from the trusted PR base commit, never from the contributor-controlled head commit.
 - Closing issues and linked discussions are collected before dispatch as untrusted business context, never as instructions or a source of truth.
 - The Sandbox receives no GitHub token. All privileged GitHub writes happen in Worker code.

@@ -1,18 +1,42 @@
 import { createGitHubChannel } from "@flue/github";
-import { isConfiguredReviewRequest } from "../github/policy.ts";
+import {
+	isConfiguredIssueTriageRequest,
+	isConfiguredReviewRequest,
+} from "../github/policy.ts";
 import type { ReviewRequest } from "../review/request.ts";
+import type { IssueTriageRequest } from "../triage/request.ts";
 
-interface ReviewQueue {
-	send(message: ReviewRequest): Promise<unknown>;
+interface Queue<Message> {
+	send(message: Message): Promise<unknown>;
 }
 
 export function createReviewChannel(input: {
-	queue: ReviewQueue;
+	queue: Queue<ReviewRequest>;
+	triageQueue: Queue<IssueTriageRequest>;
 	webhookSecret: string;
 }) {
 	return createGitHubChannel({
 		webhookSecret: input.webhookSecret,
 		async webhook({ delivery }) {
+			if (delivery.name === "issues" && delivery.payload.action === "opened") {
+				const { issue, repository } = delivery.payload;
+				if (
+					!isConfiguredIssueTriageRequest({
+						authorAssociation: issue.author_association,
+						repository: repository.full_name,
+					})
+				) {
+					return;
+				}
+
+				await input.triageQueue.send({
+					deliveryId: delivery.deliveryId,
+					issueNumber: issue.number,
+					repository: repository.full_name,
+				});
+				return;
+			}
+
 			if (
 				delivery.name !== "issue_comment" ||
 				delivery.payload.action !== "created"

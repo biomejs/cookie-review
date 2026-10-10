@@ -1,6 +1,7 @@
 export const config = {
 	acknowledgeReaction: "eyes",
 	busyReaction: "-1",
+	issueTriageQueue: "cookie-review-issue-triage",
 	reviewStaleAfterMs: 24 * 60 * 60 * 1000,
 	sandboxSleepAfter: "2h",
 	trigger: "@biome-cookie review",
@@ -9,6 +10,14 @@ export const config = {
 			model: "cloudflare/@cf/moonshotai/kimi-k2.7-code",
 			skill: ".claude/skills/biome-code-review/SKILL.md",
 			thinkingLevel: "high",
+			triage: {
+				bugIssueTypes: ["Bug"],
+				bugTemplateHeading: "Environment information",
+				minimumConfidence: 0.7,
+				model: "typesafe/jev",
+				needsReproLabel: "S-Needs repro",
+				playgroundUrl: "https://biomejs.dev/playground",
+			},
 			verification: {
 				commandTimeoutMs: 15 * 60 * 1000,
 				requiredFeatures: {
