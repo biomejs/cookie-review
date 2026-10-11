@@ -1,5 +1,6 @@
 import { config, getRepositoryConfig } from "../config.ts";
 
+const ORGANIZATION_ASSOCIATIONS = new Set(["MEMBER", "OWNER"]);
 const ACTIVE_WORKFLOW_STATUSES = new Set([
 	"paused",
 	"queued",
@@ -19,6 +20,20 @@ export function isConfiguredReviewRequest(input: {
 		getRepositoryConfig(input.repository) !== undefined &&
 		containsTrigger(input.commentBody, config.trigger)
 	);
+}
+
+export function isConfiguredIssueTriageRequest(input: {
+	authorAssociation: string;
+	repository: string;
+}) {
+	return (
+		getRepositoryConfig(input.repository) !== undefined &&
+		!isOrganizationMember(input.authorAssociation)
+	);
+}
+
+export function isOrganizationMember(authorAssociation: string) {
+	return ORGANIZATION_ASSOCIATIONS.has(authorAssociation);
 }
 
 export function containsTrigger(body: string, trigger: string) {

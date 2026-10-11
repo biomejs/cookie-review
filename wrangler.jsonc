@@ -50,11 +50,23 @@
 	],
 	"queues": {
 		"producers": [
-			{ "binding": "REVIEW_REQUESTS", "queue": "cookie-review-requests" }
+			{ "binding": "REVIEW_REQUESTS", "queue": "cookie-review-requests" },
+			{
+				"binding": "ISSUE_TRIAGE_REQUESTS",
+				"queue": "cookie-review-issue-triage"
+			}
 		],
 		"consumers": [
 			{
 				"queue": "cookie-review-requests",
+				"dead_letter_queue": "cookie-review-dead-letters",
+				"max_batch_size": 10,
+				"max_batch_timeout": 1,
+				"max_retries": 5,
+				"retry_delay": 30
+			},
+			{
+				"queue": "cookie-review-issue-triage",
 				"dead_letter_queue": "cookie-review-dead-letters",
 				"max_batch_size": 10,
 				"max_batch_timeout": 1,
