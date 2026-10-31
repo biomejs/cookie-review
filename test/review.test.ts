@@ -1,5 +1,6 @@
 import * as v from "valibot";
 import { describe, expect, it } from "vitest";
+import { config } from "../src/config.ts";
 import {
 	extractDiscussionNumbers,
 	readBusinessRequirements,
@@ -51,6 +52,8 @@ const review: ReviewResult = {
 	},
 	summary: "One correctness issue and one test gap were found.",
 };
+
+const configuredSkillPath = config.repositories["biomejs/biome"].skill;
 
 const pull = {
 	baseRef: "main",
@@ -238,12 +241,16 @@ describe("structured review", () => {
 		).toBe(false);
 	});
 
-	it("prepares a trusted workspace from the base commit", () => {
+	it("prepares the configured trusted skill from the base commit", () => {
 		const command = createCheckoutCommand({
 			pull,
-			skillPath: ".claude/skills/biome-code-review/SKILL.md",
+			skillPath: configuredSkillPath,
 		});
 
+		expect(command).toContain(
+			"cp -R '/workspace/review/repository/.agents/skills/.' '/workspace/review/.agents/skills/'",
+		);
+		expect(command).not.toContain("/repository/.claude/skills");
 		expect(command).toContain("/workspace/review/.agents/skills");
 		expect(command).toContain("/workspace/review/PR.diff");
 		expect(command).toContain(
@@ -277,12 +284,12 @@ describe("structured review", () => {
 		await ensureReviewWorkspace({
 			pull,
 			sandbox,
-			skillPath: ".claude/skills/biome-code-review/SKILL.md",
+			skillPath: configuredSkillPath,
 		});
 		await ensureReviewWorkspace({
 			pull,
 			sandbox,
-			skillPath: ".claude/skills/biome-code-review/SKILL.md",
+			skillPath: configuredSkillPath,
 		});
 
 		expect(executions).toBe(1);

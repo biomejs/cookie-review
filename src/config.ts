@@ -8,7 +8,7 @@ export const config = {
 	repositories: {
 		"biomejs/biome": {
 			model: "cloudflare/@cf/moonshotai/kimi-k2.7-code",
-			skill: ".claude/skills/biome-code-review/SKILL.md",
+			skill: ".agents/skills/biome-code-review/SKILL.md",
 			thinkingLevel: "high",
 			triage: {
 				bugIssueTypes: ["Bug"],
