@@ -74,6 +74,7 @@ describe("GitHub channel", () => {
 		expect(triage).toEqual([
 			{
 				deliveryId: "delivery-1",
+				event: "opened",
 				issueNumber: 456,
 				repository: "biomejs/biome",
 			},
@@ -100,7 +101,72 @@ describe("GitHub channel", () => {
 
 		expect(triage).toEqual([]);
 	});
+
+	it("rechecks an issue awaiting a reproduction when its body is edited", async () => {
+		const triage: IssueTriageRequest[] = [];
+		const app = createApp([], triage);
+		for (const payload of [
+			issuePayload({ action: "edited", labels: ["S-Needs repro"] }),
+			issuePayload({
+				action: "edited",
+				bodyChanged: false,
+				labels: ["S-Needs repro"],
+			}),
+			issuePayload({ action: "edited" }),
+		]) {
+			await deliver(app, payload, "issues");
+		}
+
+		expect(triage).toEqual([
+			{
+				deliveryId: "delivery-1",
+				event: "edited",
+				issueNumber: 456,
+				repository: "biomejs/biome",
+			},
+		]);
+	});
+
+	it("rechecks an issue awaiting a reproduction when an outsider comments", async () => {
+		const messages: ReviewRequest[] = [];
+		const triage: IssueTriageRequest[] = [];
+		const app = createApp(messages, triage);
+		for (const options of [
+			{ labels: ["S-Needs repro"] },
+			{ authorAssociation: "MEMBER", labels: ["S-Needs repro"] },
+			{ labels: [] },
+			{ labels: ["S-Needs repro"], pullRequest: true },
+			{ labels: ["S-Needs repro"], repository: "other/repository" },
+		]) {
+			await deliver(
+				app,
+				payload({ commentBody: "Repro: https://example.com", ...options }),
+				"issue_comment",
+			);
+		}
+
+		expect(messages).toEqual([]);
+		expect(triage).toEqual([
+			{
+				commentId: 42,
+				deliveryId: "delivery-1",
+				event: "commented",
+				issueNumber: 123,
+				repository: "biomejs/biome",
+			},
+		]);
+	});
 });
+
+async function deliver(app: Hono, payload: unknown, event: string) {
+	const body = JSON.stringify(payload);
+	const response = await app.request("/channels/github/webhook", {
+		body,
+		headers: signedHeaders(body, event),
+		method: "POST",
+	});
+	expect(response.status).toBe(200);
+}
 
 function createApp(
 	messages: ReviewRequest[],
@@ -133,17 +199,29 @@ function signedHeaders(body: string, event = "issue_comment") {
 	};
 }
 
-function payload(options: { pullRequest?: boolean } = {}) {
+function payload(
+	options: {
+		authorAssociation?: string;
+		commentBody?: string;
+		labels?: string[];
+		pullRequest?: boolean;
+		repository?: string;
+	} = {},
+) {
+	const pullRequest = options.pullRequest ?? options.labels === undefined;
 	return {
 		action: "created",
-		comment: { body: "please @biome-cookie review", id: 42 },
-		issue: {
-			number: 123,
-			...(options.pullRequest === false
-				? {}
-				: { pull_request: { url: "pull" } }),
+		comment: {
+			author_association: options.authorAssociation ?? "NONE",
+			body: options.commentBody ?? "please @biome-cookie review",
+			id: 42,
 		},
-		repository: { full_name: "biomejs/biome" },
+		issue: {
+			labels: (options.labels ?? []).map((name) => ({ name })),
+			number: 123,
+			...(pullRequest ? { pull_request: { url: "pull" } } : {}),
+		},
+		repository: { full_name: options.repository ?? "biomejs/biome" },
 		sender: { login: "maintainer" },
 	};
 }
@@ -152,13 +230,19 @@ function issuePayload(
 	options: {
 		action?: string;
 		authorAssociation?: string;
+		bodyChanged?: boolean;
+		labels?: string[];
 		repository?: string;
 	} = {},
 ) {
 	return {
 		action: options.action ?? "opened",
+		...(options.action === "edited"
+			? { changes: options.bodyChanged === false ? {} : { body: { from: "" } } }
+			: {}),
 		issue: {
 			author_association: options.authorAssociation ?? "NONE",
+			labels: (options.labels ?? []).map((name) => ({ name })),
 			number: 456,
 		},
 		repository: { full_name: options.repository ?? "biomejs/biome" },

@@ -11,7 +11,7 @@ const QUESTIONS = {
 			true: "At least one link is a playground link sharing code, or a repository set up to reproduce the problem",
 		},
 		instructions:
-			"Does the issue link to a minimal reproduction of the problem described in `body`: either a link to the playground at `playgroundUrl`, or a GitHub repository from `links`?",
+			"Does the issue, or the follow-up `comment` when one is given, link to a minimal reproduction of the problem described in `body`: either a link to the playground at `playgroundUrl`, or a GitHub repository from `links`?",
 		type: "noul",
 	},
 	isBugReport: {
@@ -37,6 +37,7 @@ const jevResponseSchema = v.object({
 // The issue is untrusted input. Jev only scores it against the fixed questions
 // below, and its answers are bounded probabilities.
 export function buildJevInput(input: {
+	comment?: string;
 	issue: { body: string; title: string };
 	links: readonly string[];
 	playgroundUrl: string;
@@ -48,6 +49,9 @@ export function buildJevInput(input: {
 		),
 		state: {
 			body: input.issue.body.slice(0, MAX_BODY_CHARACTERS),
+			...(input.comment === undefined
+				? {}
+				: { comment: input.comment.slice(0, MAX_BODY_CHARACTERS) }),
 			links: input.links.slice(0, MAX_LINKS),
 			playgroundUrl: input.playgroundUrl,
 			title: input.issue.title,
