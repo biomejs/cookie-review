@@ -2,7 +2,7 @@
 
 Cookie Review runs structured, repository-aware pull request reviews for `biomejs/biome`. A maintainer requests a review by commenting `@biome-cookie review` on a pull request.
 
-Cookie Review also triages newly opened issues: a bug report from outside the `biomejs` organization that links neither a playground nor a reproduction repository receives the `S-Needs repro` label.
+Cookie Review also triages newly opened issues: a bug report from outside the `biomejs` organization that links neither a playground nor a reproduction repository receives the `S-Needs repro` label. When the reporter later edits the issue or comments with a reproduction, `S-Needs repro` is swapped back to `S-Needs triage`.
 
 The application uses Flue v2, Cloudflare Workers AI, Workflows, Queues, Durable Objects, and Sandbox containers. GitHub is both the ingress channel and review destination. Review analysis is read-only; directly applicable suggested changes are checked in a separate tokenless Rust verification sandbox before publication.
 
@@ -49,7 +49,9 @@ Cloudflare Sandbox containers are deployed infrastructure and are not exercised 
 
 The analysis container stays read-only. A verification container is created lazily only when the reviewer has candidate suggestions. It checks out the public pull request head, fetches locked Cargo dependencies, and disables network access. Non-overlapping suggestions that share a crate and command are applied as one batch before a single package-scoped `cargo check`, `cargo test`, or `cargo clippy` run. Whole-workspace commands are not available. A passing batch receives one bound receipt per suggestion; suggestions from failing batches are omitted while their findings remain.
 
-Issue triage runs in the Queue consumer without a Sandbox. The issue type, the bug report template, and the links in the issue body settle most issues directly. Only what they leave undecided is put to TypeSafe's Jev decision model through the Workers AI binding, and the label is applied only when its answers clear the configured confidence. Applying the label is the only write: the `biomejs/biome` `needs-repro.yml` workflow then posts the reproduction request, and its stale-issue job closes the issue after three days without activity.
+Issue triage runs in the Queue consumer without a Sandbox. The issue type, the bug report template, and the links in the issue body settle most issues directly. Only what they leave undecided is put to TypeSafe's Jev decision model through the Workers AI binding, and the label is applied only when its answers clear the configured confidence. Applying the label is the only write: the `biomejs/biome` `needs-repro.yml` workflow then posts the reproduction request, removes `S-Needs triage`, and its stale-issue job closes the issue after three days without activity.
+
+An issue labeled `S-Needs repro` is rechecked when its body is edited or someone outside the organization comments on it. The same heuristics and Jev question run against the edited body or the new comment. A confident reproduction adds `S-Needs triage` and then removes `S-Needs repro`, which also takes the issue out of the stale-issue job.
 
 The verification image pins the Rust toolchain expected by the configured repository. Build it locally with:
 

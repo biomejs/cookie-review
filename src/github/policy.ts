@@ -32,6 +32,21 @@ export function isConfiguredIssueTriageRequest(input: {
 	);
 }
 
+// An issue awaiting a reproduction is rechecked when its body changes or an
+// outside contributor comments. Maintainers already triaging it are not.
+export function isReproductionUpdate(input: {
+	authorAssociation: string;
+	labels: readonly string[];
+	repository: string;
+}) {
+	const policy = getRepositoryConfig(input.repository)?.triage;
+	return (
+		policy !== undefined &&
+		input.labels.includes(policy.needsReproLabel) &&
+		!isOrganizationMember(input.authorAssociation)
+	);
+}
+
 export function isOrganizationMember(authorAssociation: string) {
 	return ORGANIZATION_ASSOCIATIONS.has(authorAssociation);
 }

@@ -12,6 +12,7 @@ import { type ReviewRequest, reviewRequestSchema } from "./review/request.ts";
 import { VERIFICATION_SETUP_HOSTS } from "./review/verification.ts";
 import { processIssueTriageRequest } from "./triage/process.ts";
 import {
+	type CommentSnapshot,
 	type IssueSnapshot,
 	type IssueTriageRequest,
 	issueTriageRequestSchema,
@@ -103,13 +104,17 @@ async function consumeIssueTriageRequest(
 		const outcome = await processIssueTriageRequest(parsed.output, {
 			addLabel: (request, label) => addLabel(client, request, label),
 			ask: (model, input) => env.AI.run(model, input),
+			getComment: (request, commentId) =>
+				getComment(client, request, commentId),
 			getIssue: (request) => getIssue(client, request),
+			removeLabel: (request, label) => removeLabel(client, request, label),
 		});
 		console.log({
 			event: "issue.triage.completed",
 			issueNumber: parsed.output.issueNumber,
 			outcome,
 			repository: parsed.output.repository,
+			triggeredBy: parsed.output.event,
 		});
 		message.ack();
 	} catch (error) {
@@ -147,6 +152,29 @@ async function getIssue(
 	}
 }
 
+async function getComment(
+	client: GitHubClient,
+	request: IssueTriageRequest,
+	commentId: number,
+): Promise<CommentSnapshot | undefined> {
+	const [owner, repo] = splitRepository(request.repository);
+	try {
+		const { data } = await client.rest.issues.getComment({
+			comment_id: commentId,
+			owner,
+			repo,
+		});
+		return {
+			authorAssociation: data.author_association,
+			body: data.body ?? "",
+		};
+	} catch (error) {
+		const status = getErrorStatus(error);
+		if (status === 404 || status === 410) return undefined;
+		throw error;
+	}
+}
+
 async function addLabel(
 	client: GitHubClient,
 	request: IssueTriageRequest,
@@ -159,6 +187,25 @@ async function addLabel(
 		owner,
 		repo,
 	});
+}
+
+async function removeLabel(
+	client: GitHubClient,
+	request: IssueTriageRequest,
+	label: string,
+) {
+	const [owner, repo] = splitRepository(request.repository);
+	try {
+		await client.rest.issues.removeLabel({
+			issue_number: request.issueNumber,
+			name: label,
+			owner,
+			repo,
+		});
+	} catch (error) {
+		// The label is already gone, so a redelivered request has nothing to do.
+		if (getErrorStatus(error) !== 404) throw error;
+	}
 }
 
 async function getPermission(client: GitHubClient, request: ReviewRequest) {
