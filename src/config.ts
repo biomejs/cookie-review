@@ -16,6 +16,7 @@ export const config = {
 				minimumConfidence: 0.7,
 				model: "typesafe/jev",
 				needsReproLabel: "S-Needs repro",
+				needsTriageLabel: "S-Needs triage",
 				playgroundUrl: "https://biomejs.dev/playground",
 			},
 			verification: {

@@ -1,18 +1,28 @@
+import * as v from "valibot";
 import { describe, expect, it, vi } from "vitest";
 import {
 	detectBugReport,
 	detectReproduction,
 } from "../src/triage/heuristics.ts";
 import { processIssueTriageRequest } from "../src/triage/process.ts";
-import type {
-	IssueSnapshot,
-	IssueTriageRequest,
+import {
+	type CommentSnapshot,
+	type IssueSnapshot,
+	type IssueTriageRequest,
+	issueTriageRequestSchema,
 } from "../src/triage/request.ts";
 
 const request: IssueTriageRequest = {
 	deliveryId: "delivery-1",
+	event: "opened",
 	issueNumber: 456,
 	repository: "biomejs/biome",
+};
+const editedRequest: IssueTriageRequest = { ...request, event: "edited" };
+const commentedRequest: IssueTriageRequest = {
+	...request,
+	commentId: 789,
+	event: "commented",
 };
 const bugPolicy = {
 	bugIssueTypes: ["Bug"],
@@ -243,6 +253,204 @@ describe("issue triage processing", () => {
 	});
 });
 
+describe("issue triage request schema", () => {
+	it("reads requests enqueued before the event field as opened issues", () => {
+		expect(
+			v.parse(issueTriageRequestSchema, {
+				deliveryId: "delivery-1",
+				issueNumber: 456,
+				repository: "biomejs/biome",
+			}),
+		).toEqual(request);
+	});
+
+	it("requires a comment ID for comment rechecks", () => {
+		expect(
+			v.safeParse(issueTriageRequestSchema, { ...request, event: "commented" })
+				.success,
+		).toBe(false);
+		expect(v.parse(issueTriageRequestSchema, commentedRequest)).toEqual(
+			commentedRequest,
+		);
+	});
+});
+
+describe("reproduction recheck", () => {
+	const awaiting = { labels: ["S-Needs repro"] };
+
+	it("returns an edited issue that now links a playground to triage", async () => {
+		const services = createServices(
+			issue({ ...awaiting, body: `Repro: ${playgroundLink}` }),
+		);
+
+		expect(await processIssueTriageRequest(editedRequest, services)).toBe(
+			"retriaged",
+		);
+		expect(services.ask).not.toHaveBeenCalled();
+		expect(services.getComment).not.toHaveBeenCalled();
+		expect(services.addLabel).toHaveBeenCalledExactlyOnceWith(
+			editedRequest,
+			"S-Needs triage",
+		);
+		expect(services.removeLabel).toHaveBeenCalledExactlyOnceWith(
+			editedRequest,
+			"S-Needs repro",
+		);
+	});
+
+	it("returns an issue to triage when a comment links a reproduction", async () => {
+		const services = createServices(
+			issue(awaiting),
+			{},
+			{
+				authorAssociation: "NONE",
+				body: "Here: https://github.com/reporter/biome-repro",
+			},
+		);
+
+		expect(await processIssueTriageRequest(commentedRequest, services)).toBe(
+			"retriaged",
+		);
+		expect(services.getComment).toHaveBeenCalledExactlyOnceWith(
+			commentedRequest,
+			789,
+		);
+		expect(services.addLabel).toHaveBeenCalledExactlyOnceWith(
+			commentedRequest,
+			"S-Needs triage",
+		);
+		expect(services.removeLabel).toHaveBeenCalledExactlyOnceWith(
+			commentedRequest,
+			"S-Needs repro",
+		);
+	});
+
+	it("finishes a partially applied label swap on redelivery", async () => {
+		const services = createServices(
+			issue({
+				body: playgroundLink,
+				labels: ["S-Needs repro", "S-Needs triage"],
+			}),
+		);
+
+		expect(await processIssueTriageRequest(editedRequest, services)).toBe(
+			"retriaged",
+		);
+		expect(services.removeLabel).toHaveBeenCalledExactlyOnceWith(
+			editedRequest,
+			"S-Needs repro",
+		);
+	});
+
+	it("adds the triage label before removing the reproduction label", async () => {
+		const services = createServices(
+			issue({ ...awaiting, body: playgroundLink }),
+		);
+		services.addLabel.mockRejectedValueOnce(new Error("GitHub unavailable"));
+
+		await expect(
+			processIssueTriageRequest(editedRequest, services),
+		).rejects.toThrow();
+		expect(services.removeLabel).not.toHaveBeenCalled();
+	});
+
+	it("judges the comment's links, not the issue body's", async () => {
+		const services = createServices(
+			issue({ ...awaiting, body: playgroundLink }),
+			{},
+			{ authorAssociation: "NONE", body: "Still broken on 2.5.15." },
+		);
+
+		expect(await processIssueTriageRequest(commentedRequest, services)).toBe(
+			"no-reproduction",
+		);
+		expect(services.addLabel).not.toHaveBeenCalled();
+		expect(services.removeLabel).not.toHaveBeenCalled();
+	});
+
+	it("skips issues and comments that need no recheck", async () => {
+		const outsider = { authorAssociation: "NONE", body: playgroundLink };
+		for (const [triageRequest, snapshot, comment] of [
+			[editedRequest, undefined, undefined],
+			[editedRequest, issue({ body: playgroundLink }), undefined],
+			[
+				editedRequest,
+				issue({ ...awaiting, body: playgroundLink, state: "closed" }),
+				undefined,
+			],
+			[
+				editedRequest,
+				issue({ ...awaiting, body: playgroundLink, isPullRequest: true }),
+				undefined,
+			],
+			[
+				editedRequest,
+				issue({
+					...awaiting,
+					authorAssociation: "MEMBER",
+					body: playgroundLink,
+				}),
+				undefined,
+			],
+			[commentedRequest, issue(awaiting), undefined],
+			[
+				commentedRequest,
+				issue(awaiting),
+				{ ...outsider, authorAssociation: "OWNER" },
+			],
+			[commentedRequest, issue({ labels: [] }), outsider],
+		] as const) {
+			const services = createServices(snapshot, {}, comment);
+
+			expect(await processIssueTriageRequest(triageRequest, services)).toBe(
+				"ignored",
+			);
+			expect(services.ask).not.toHaveBeenCalled();
+			expect(services.addLabel).not.toHaveBeenCalled();
+		}
+	});
+
+	it("asks the model only about undecided repository links", async () => {
+		const comment = {
+			authorAssociation: "CONTRIBUTOR",
+			body: "Reproduced in https://github.com/reporter/my-app",
+		};
+		for (const [noul, outcome] of [
+			[0.9, "retriaged"],
+			[0.5, "uncertain"],
+			[0.1, "no-reproduction"],
+		] as const) {
+			const services = createServices(
+				issue(awaiting),
+				{ hasReproduction: noul },
+				comment,
+			);
+
+			expect(await processIssueTriageRequest(commentedRequest, services)).toBe(
+				outcome,
+			);
+			expect(services.ask).toHaveBeenCalledExactlyOnceWith("typesafe/jev", {
+				questions: {
+					hasReproduction: expect.objectContaining({ type: "noul" }),
+				},
+				state: {
+					body: "### Environment information\n\nCLI: 2.5.14",
+					comment: comment.body,
+					links: ["https://github.com/reporter/my-app"],
+					playgroundUrl: "https://biomejs.dev/playground",
+					title: "Formatter crash",
+				},
+			});
+			expect(services.addLabel).toHaveBeenCalledTimes(
+				outcome === "retriaged" ? 1 : 0,
+			);
+			expect(services.removeLabel).toHaveBeenCalledTimes(
+				outcome === "retriaged" ? 1 : 0,
+			);
+		}
+	});
+});
+
 function issue(overrides: Partial<IssueSnapshot> = {}): IssueSnapshot {
 	return {
 		authorAssociation: "NONE",
@@ -259,6 +467,7 @@ function issue(overrides: Partial<IssueSnapshot> = {}): IssueSnapshot {
 function createServices(
 	snapshot: IssueSnapshot | undefined,
 	answers: Record<string, number> = {},
+	comment?: CommentSnapshot,
 ) {
 	return {
 		addLabel: vi.fn(async () => {}),
@@ -273,6 +482,8 @@ function createServices(
 				model: "jev-1.13.0",
 			}),
 		),
+		getComment: vi.fn(async () => comment),
 		getIssue: vi.fn(async () => snapshot),
+		removeLabel: vi.fn(async () => {}),
 	};
 }
