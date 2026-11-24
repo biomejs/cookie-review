@@ -22,7 +22,7 @@ describe("failure observability", () => {
 				providerId: "cloudflare",
 				providerName: "cloudflare",
 				reasoningLevel: "high",
-				requestedModel: "@cf/moonshotai/kimi-k2.7-code",
+				requestedModel: "@cf/zai-org/glm-5.3",
 			},
 			response: {
 				error: { message: "provider request failed", type: "provider_error" },
@@ -42,7 +42,7 @@ describe("failure observability", () => {
 			event: "flue.model_turn.failed",
 			finishReason: "error",
 			gatewayLogId: "gateway-log-1",
-			model: "@cf/moonshotai/kimi-k2.7-code",
+			model: "@cf/zai-org/glm-5.3",
 			providerFinishReason: "error",
 			reasoningLevel: "high",
 			severity: "error",

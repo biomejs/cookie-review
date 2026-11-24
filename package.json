@@ -20,18 +20,18 @@
 	"type": "module",
 	"dependencies": {
 		"@cloudflare/sandbox": "0.12.8",
-		"@flue/github": "2.0.3",
-		"@flue/runtime": "2.0.3",
+		"@flue/github": "2.3.1",
+		"@flue/runtime": "2.3.1",
 		"@octokit/rest": "22.0.1",
 		"hono": "4.12.32",
-		"valibot": "1.4.2"
+		"valibot": "1.5.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.4",
 		"@cloudflare/vite-plugin": "1.39.2",
 		"@cloudflare/workers-types": "5.20260930.2",
-		"@flue/cli": "2.0.3",
-		"@flue/vite": "2.0.3",
+		"@flue/cli": "2.3.1",
+		"@flue/vite": "2.3.1",
 		"@types/node": "22.19.0",
 		"typescript": "7.0.2",
 		"vite": "8.1.2",
